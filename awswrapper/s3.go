@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
@@ -21,10 +20,6 @@ import (
 type S3Service struct {
 	region  string
 	service *s3.S3
-}
-
-type ServiceSession struct {
-	Sess *session.Session
 }
 
 type S3Options struct {
@@ -54,14 +49,6 @@ func GetS3Service(region string) *S3Service {
 	}
 	s3Services[region] = s3Service
 	return s3Service
-}
-
-func (o *S3Service) GetNewSession() *ServiceSession {
-	return &ServiceSession{
-		Sess: session.Must(session.NewSession(&aws.Config{
-			Region: aws.String(o.region),
-		})),
-	}
 }
 
 // CreateBucket creates a bucket with given name and in given region
@@ -311,46 +298,18 @@ func (o *S3Service) RemoveAllFromS3(bucketName string, path string) (err error) 
 	return
 }
 
-// UploadToS3Concurrently uploads content to S3 concurrently
-// args. [0]. Make Public Or Not.
-func (o *S3Service) UploadToS3Concurrently(content []byte, bucketName string, path string, args ...interface{}) error {
-
-	session := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(o.region),
-	}))
-
-	uploader := s3manager.NewUploader(session)
-	bodyBytes := bytes.NewReader(content)
-
-	err := o.uploadToS3(uploader, bodyBytes, bucketName, path, aws.String(http.DetectContentType(content)), args...)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (o *S3Service) UploadToS3WithSession(session *ServiceSession, reader io.Reader, bucket, path string, contentType *string, options *S3Options, args ...interface{}) (err error) {
+func (o *S3Service) UploadToS3Concurrently(reader io.Reader, bucket, path string, contentType *string, options *S3Options, args ...interface{}) (err error) {
 	var uploader *s3manager.Uploader
 	if options == nil {
-		uploader = s3manager.NewUploader(session.Sess)
+		uploader = s3manager.NewUploaderWithClient(o.service)
 	} else {
-		uploader = s3manager.NewUploader(session.Sess, func(u *s3manager.Uploader) {
+		uploader = s3manager.NewUploaderWithClient(o.service, func(u *s3manager.Uploader) {
 			u.PartSize = options.PartSize
 			u.Concurrency = options.Concurrency
 			u.LeavePartsOnError = options.LeavePartsOnError
 		})
 	}
 
-	err = o.uploadToS3(uploader, reader, bucket, path, contentType, args...)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-func (o *S3Service) uploadToS3(uploader *s3manager.Uploader, reader io.Reader, bucket, path string, contentType *string, args ...interface{}) (err error) {
 	acl := s3.ObjectCannedACLPrivate
 	if len(args) > 0 {
 		for i, arg := range args {
@@ -388,46 +347,17 @@ func (o *S3Service) uploadToS3(uploader *s3manager.Uploader, reader io.Reader, b
 	return
 }
 
-// ReadFromS3Concurrently reads content from S3 concurrently
-func (o *S3Service) ReadFromS3Concurrently(bucketName string, path string) (content []byte, err error) {
-
-	session := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(o.region),
-	}))
-
-	downloader := s3manager.NewDownloader(session)
-
-	var buffer aws.WriteAtBuffer
-
-	err = o.downloadFromS3(downloader, bucketName, path, &buffer)
-	if err != nil {
-		return
-	}
-
-	content = buffer.Bytes()
-	return
-}
-
-func (o *S3Service) DownloadFromS3WithSession(session *ServiceSession, bucket, path string, output io.WriterAt, options *S3Options) (err error) {
+func (o *S3Service) DownloadFromS3Concurrently(bucket, path string, output io.WriterAt, options *S3Options) (err error) {
 	var downloader *s3manager.Downloader
 	if options == nil {
-		downloader = s3manager.NewDownloader(session.Sess)
+		downloader = s3manager.NewDownloaderWithClient(o.service)
 	} else {
-		downloader = s3manager.NewDownloader(session.Sess, func(d *s3manager.Downloader) {
+		downloader = s3manager.NewDownloaderWithClient(o.service, func(d *s3manager.Downloader) {
 			d.PartSize = options.PartSize
 			d.Concurrency = options.Concurrency
 		})
 	}
 
-	err = o.downloadFromS3(downloader, bucket, path, output)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-func (o *S3Service) downloadFromS3(downloader *s3manager.Downloader, bucket, path string, output io.WriterAt) (err error) {
 	_, err = downloader.Download(output, &s3.GetObjectInput{
 		Bucket: &bucket,
 		Key:    &path,

@@ -1,5 +1,7 @@
 package awswrapper
 
+import "github.com/aws/aws-sdk-go/aws"
+
 // ConcurrentDownloader is used to download multiple files to S3 concurrently.
 type ConcurrentDownloader struct {
 	DownloadContent map[string][]byte
@@ -34,10 +36,12 @@ func (downloader *ConcurrentDownloader) Download(path string) {
 func (downloader *ConcurrentDownloader) Execute() {
 	for path := range downloader.DownloadContent {
 		go func(path string) {
-			content, err := GetS3Service(downloader.region).ReadFromS3Concurrently(downloader.bucketName, path)
+			b := make([]byte, 0)
+			output := aws.NewWriteAtBuffer(b)
+			err := GetS3Service(downloader.region).DownloadFromS3Concurrently(downloader.bucketName, path, output, nil)
 			if err == nil {
 				downloader.downloadChan <- map[string][]byte{
-					path: content,
+					path: output.Bytes(),
 				}
 			} else {
 				downloader.downloadChan <- map[string][]byte{
