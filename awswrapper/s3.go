@@ -56,7 +56,7 @@ func GetS3Service(region string) *S3Service {
 	return s3Service
 }
 
-func (o *S3Service) GetSession() *ServiceSession {
+func (o *S3Service) GetNewSession() *ServiceSession {
 	return &ServiceSession{
 		Sess: session.Must(session.NewSession(&aws.Config{
 			Region: aws.String(o.region),
@@ -321,36 +321,13 @@ func (o *S3Service) UploadToS3Concurrently(content []byte, bucketName string, pa
 
 	uploader := s3manager.NewUploader(session)
 	bodyBytes := bytes.NewReader(content)
-	acl := s3.ObjectCannedACLPrivate
-	if len(args) > 0 {
-		for i, arg := range args {
-			switch i {
-			case 0:
-				if arg.(bool) {
-					acl = s3.ObjectCannedACLPublicRead
-				}
-			}
-		}
-	}
-	_, err := uploader.Upload(&s3manager.UploadInput{
-		Bucket:      aws.String(bucketName),
-		Key:         aws.String(path),
-		Body:        bodyBytes,
-		ContentType: aws.String(http.DetectContentType(content)),
-		ACL:         aws.String(acl),
-	})
-	fmt.Println("uploading object: ", path)
+
+	err := o.uploadToS3(uploader, bodyBytes, bucketName, path, aws.String(http.DetectContentType(content)), args...)
 	if err != nil {
-		if multierr, ok := err.(s3manager.MultiUploadFailure); ok {
-			// Process error and its associated uploadID
-			fmt.Println("error:", multierr.Code(), multierr.Message(), multierr.UploadID())
-		} else {
-			// Process error generically
-			fmt.Println("error:", err.Error())
-		}
+		return err
 	}
 
-	return err
+	return nil
 }
 
 func (o *S3Service) UploadToS3WithSession(session *ServiceSession, reader io.Reader, bucket, path string, contentType *string, options *S3Options, args ...interface{}) (err error) {
@@ -365,6 +342,15 @@ func (o *S3Service) UploadToS3WithSession(session *ServiceSession, reader io.Rea
 		})
 	}
 
+	err = o.uploadToS3(uploader, reader, bucket, path, contentType, args...)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func (o *S3Service) uploadToS3(uploader *s3manager.Uploader, reader io.Reader, bucket, path string, contentType *string, args ...interface{}) (err error) {
 	acl := s3.ObjectCannedACLPrivate
 	if len(args) > 0 {
 		for i, arg := range args {
@@ -387,7 +373,13 @@ func (o *S3Service) UploadToS3WithSession(session *ServiceSession, reader io.Rea
 
 	uploadOutput, err := uploader.Upload(uploadInput)
 	if err != nil {
-		log.Fatalf("Error while uploading: %s", err)
+		if multierr, ok := err.(s3manager.MultiUploadFailure); ok {
+			// Process error and its associated uploadID
+			log.Fatalf("error: %s %s %s", multierr.Code(), multierr.Message(), multierr.UploadID())
+		} else {
+			// Process error generically
+			log.Fatalf("error: %s", err.Error())
+		}
 		return
 	}
 
@@ -407,18 +399,12 @@ func (o *S3Service) ReadFromS3Concurrently(bucketName string, path string) (cont
 
 	var buffer aws.WriteAtBuffer
 
-	_, err = downloader.Download(&buffer, &s3.GetObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(path),
-	})
-
-	fmt.Println("downloading object: ", path)
-
+	err = o.downloadFromS3(downloader, bucketName, path, &buffer)
 	if err != nil {
-		fmt.Printf("bad response: %s\n", err)
-	} else {
-		content = buffer.Bytes()
+		return
 	}
+
+	content = buffer.Bytes()
 	return
 }
 
@@ -433,6 +419,15 @@ func (o *S3Service) DownloadFromS3WithSession(session *ServiceSession, bucket, p
 		})
 	}
 
+	err = o.downloadFromS3(downloader, bucket, path, output)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func (o *S3Service) downloadFromS3(downloader *s3manager.Downloader, bucket, path string, output io.WriterAt) (err error) {
 	_, err = downloader.Download(output, &s3.GetObjectInput{
 		Bucket: &bucket,
 		Key:    &path,
@@ -441,6 +436,7 @@ func (o *S3Service) DownloadFromS3WithSession(session *ServiceSession, bucket, p
 		log.Fatalf("Error while downloading from S3: %s", err)
 		return
 	}
+
 	return
 }
 
