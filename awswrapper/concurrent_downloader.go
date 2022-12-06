@@ -38,7 +38,7 @@ func (downloader *ConcurrentDownloader) Execute() {
 		go func(path string) {
 			b := make([]byte, 0)
 			output := aws.NewWriteAtBuffer(b)
-			err := GetS3Service(downloader.region).DownloadFromS3Concurrently(downloader.bucketName, path, output, nil)
+			err := GetS3Service(downloader.region).ReadFromS3Concurrently(downloader.bucketName, path, output, nil)
 			if err == nil {
 				downloader.downloadChan <- map[string][]byte{
 					path: output.Bytes(),

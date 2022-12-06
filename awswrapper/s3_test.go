@@ -81,7 +81,7 @@ func TestS3Read(t *testing.T) {
 	tm := time.Now().UTC().Unix()
 	b := make([]byte, 0)
 	output := aws.NewWriteAtBuffer(b)
-	err := GetS3Service("ap-southeast-1").DownloadFromS3Concurrently(bucketName, "/test", output, nil)
+	err := GetS3Service("ap-southeast-1").ReadFromS3Concurrently(bucketName, "/test", output, nil)
 	Convey("Download From S3 Concurrently", t, func() {
 		So(err, ShouldBeNil)
 		delta := time.Now().UTC().Unix() - tm
@@ -136,7 +136,7 @@ func TestS3UploadDownloadWithSession(t *testing.T) {
 
 	b := make([]byte, 0)
 	output := aws.NewWriteAtBuffer(b)
-	err = GetS3Service("ap-southeast-1").DownloadFromS3Concurrently(bucketName, "/test", output, nil)
+	err = GetS3Service("ap-southeast-1").ReadFromS3Concurrently(bucketName, "/test", output, nil)
 	Convey("Download From S3 With Session", t, func() {
 		So(err, ShouldBeNil)
 		So(len(output.Bytes()), ShouldEqual, 1*1024*1024)
@@ -149,7 +149,7 @@ func TestS3UploadDownloadWithSession(t *testing.T) {
 
 	b = make([]byte, 0)
 	output = aws.NewWriteAtBuffer(b)
-	err = GetS3Service("ap-southeast-1").DownloadFromS3Concurrently(bucketName, "/test", output, &S3Options{PartSize: 50 * 1024 * 1024, Concurrency: 2})
+	err = GetS3Service("ap-southeast-1").ReadFromS3Concurrently(bucketName, "/test", output, &S3Options{PartSize: 50 * 1024 * 1024, Concurrency: 2})
 	Convey("Download From S3 With Session Plus Options", t, func() {
 		So(err, ShouldBeNil)
 		So(len(output.Bytes()), ShouldEqual, 1*1024*1024)

@@ -347,7 +347,7 @@ func (o *S3Service) UploadToS3Concurrently(reader io.Reader, bucket, path string
 	return
 }
 
-func (o *S3Service) DownloadFromS3Concurrently(bucket, path string, output io.WriterAt, options *S3Options) (err error) {
+func (o *S3Service) ReadFromS3Concurrently(bucket, path string, output io.WriterAt, options *S3Options) (err error) {
 	var downloader *s3manager.Downloader
 	if options == nil {
 		downloader = s3manager.NewDownloaderWithClient(o.service)
