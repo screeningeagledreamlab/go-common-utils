@@ -18,34 +18,34 @@ var (
 func TestMain(m *testing.M) {
 	fmt.Println("Create the bucket first.")
 	bucketName = "wumuxian-test"
-	//err := GetS3Service("ap-southeast-1").CreateBucket("wumuxian-test", "ap-southeast-1")
-	//if err != nil {
-	//	fmt.Println("Failed to create the bucket.")
-	//	return
-	//}
-	//
-	//// Try to create again, this time it will fail.
-	//err = GetS3Service("ap-southeast-1").CreateBucket("wumuxian-test", "ap-southeast-1")
-	//if err == nil {
-	//	fmt.Println("You Should Not Be Allowed to Create Bucket With the Same Name.")
-	//	return
-	//}
+	err := GetS3Service("ap-southeast-1").CreateBucket("wumuxian-test", "ap-southeast-1")
+	if err != nil {
+		fmt.Println("Failed to create the bucket.")
+		return
+	}
+
+	// Try to create again, this time it will fail.
+	err = GetS3Service("ap-southeast-1").CreateBucket("wumuxian-test", "ap-southeast-1")
+	if err == nil {
+		fmt.Println("You Should Not Be Allowed to Create Bucket With the Same Name.")
+		return
+	}
 
 	m.Run()
 
-	//fmt.Println("Delete the bucket.")
-	//err = GetS3Service("ap-southeast-1").DeleteBucket(bucketName)
-	//if err != nil {
-	//	fmt.Println("Failed to delete the bucket.")
-	//	return
-	//}
-	//
-	//// Delete again.
-	//err = GetS3Service("ap-southeast-1").DeleteBucket(bucketName)
-	//if err == nil {
-	//	fmt.Println("You Should Not Be Allowed to Delete Bucket That Does Not Exist.")
-	//	return
-	//}
+	fmt.Println("Delete the bucket.")
+	err = GetS3Service("ap-southeast-1").DeleteBucket(bucketName)
+	if err != nil {
+		fmt.Println("Failed to delete the bucket.")
+		return
+	}
+
+	// Delete again.
+	err = GetS3Service("ap-southeast-1").DeleteBucket(bucketName)
+	if err == nil {
+		fmt.Println("You Should Not Be Allowed to Delete Bucket That Does Not Exist.")
+		return
+	}
 }
 
 func TestS3Upload(t *testing.T) {
