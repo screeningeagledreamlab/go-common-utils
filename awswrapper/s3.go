@@ -330,6 +330,7 @@ func (o *S3Service) UploadToS3Concurrently(reader io.Reader, bucket, path string
 		ACL:         &acl,
 	}
 
+	log.Printf("Uploading object to path: %s", path)
 	uploadOutput, err := uploader.Upload(uploadInput)
 	if err != nil {
 		if multierr, ok := err.(s3manager.MultiUploadFailure); ok {
