@@ -1,5 +1,11 @@
 package awswrapper
 
+import (
+	"bytes"
+	"github.com/aws/aws-sdk-go/aws"
+	"net/http"
+)
+
 // ConcurrentUploader is used to upload multiple files to S3 concurrently.
 type ConcurrentUploader struct {
 	uploadStatus  map[string]int // status 0 = pending, 1 = completed, -1 = failed
@@ -37,7 +43,8 @@ func (uploader *ConcurrentUploader) Upload(content []byte, path string) {
 func (uploader *ConcurrentUploader) Execute() {
 	for path, content := range uploader.uploadContent {
 		go func(path string, content []byte) {
-			err := GetS3Service(uploader.region).UploadToS3Concurrently(content, uploader.bucketName, path)
+			reader := bytes.NewReader(content)
+			err := GetS3Service(uploader.region).UploadToS3Concurrently(reader, uploader.bucketName, path, aws.String(http.DetectContentType(content)), nil)
 			uploader.uploadChan <- map[string]error{
 				path: err,
 			}

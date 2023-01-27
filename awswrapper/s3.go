@@ -3,6 +3,7 @@ package awswrapper
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
@@ -20,6 +20,12 @@ import (
 type S3Service struct {
 	region  string
 	service *s3.S3
+}
+
+type S3Options struct {
+	PartSize          int64
+	Concurrency       int
+	LeavePartsOnError bool
 }
 
 var (
@@ -292,16 +298,18 @@ func (o *S3Service) RemoveAllFromS3(bucketName string, path string) (err error) 
 	return
 }
 
-// UploadToS3Concurrently uploads content to S3 concurrently
-// args. [0]. Make Public Or Not.
-func (o *S3Service) UploadToS3Concurrently(content []byte, bucketName string, path string, args ...interface{}) error {
+func (o *S3Service) UploadToS3Concurrently(reader io.Reader, bucket, path string, contentType *string, options *S3Options, args ...interface{}) (err error) {
+	var uploader *s3manager.Uploader
+	if options == nil {
+		uploader = s3manager.NewUploaderWithClient(o.service)
+	} else {
+		uploader = s3manager.NewUploaderWithClient(o.service, func(u *s3manager.Uploader) {
+			u.PartSize = options.PartSize
+			u.Concurrency = options.Concurrency
+			u.LeavePartsOnError = options.LeavePartsOnError
+		})
+	}
 
-	session := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(o.region),
-	}))
-
-	uploader := s3manager.NewUploader(session)
-	bodyBytes := bytes.NewReader(content)
 	acl := s3.ObjectCannedACLPrivate
 	if len(args) > 0 {
 		for i, arg := range args {
@@ -313,50 +321,53 @@ func (o *S3Service) UploadToS3Concurrently(content []byte, bucketName string, pa
 			}
 		}
 	}
-	_, err := uploader.Upload(&s3manager.UploadInput{
-		Bucket:      aws.String(bucketName),
-		Key:         aws.String(path),
-		Body:        bodyBytes,
-		ContentType: aws.String(http.DetectContentType(content)),
-		ACL:         aws.String(acl),
-	})
-	fmt.Println("uploading object: ", path)
+
+	uploadInput := &s3manager.UploadInput{
+		Bucket:      &bucket,
+		Key:         &path,
+		Body:        reader,
+		ContentType: contentType,
+		ACL:         &acl,
+	}
+
+	log.Printf("Uploading object to path: %s", path)
+	uploadOutput, err := uploader.Upload(uploadInput)
 	if err != nil {
 		if multierr, ok := err.(s3manager.MultiUploadFailure); ok {
 			// Process error and its associated uploadID
-			fmt.Println("error:", multierr.Code(), multierr.Message(), multierr.UploadID())
+			log.Fatalf("error: %s %s %s", multierr.Code(), multierr.Message(), multierr.UploadID())
 		} else {
 			// Process error generically
-			fmt.Println("error:", err.Error())
+			log.Fatalf("error: %s", err.Error())
 		}
+		return
 	}
 
-	return err
+	log.Printf("Uploaded to: %s", uploadOutput.Location)
+
+	return
 }
 
-// ReadFromS3Concurrently reads content from S3 concurrently
-func (o *S3Service) ReadFromS3Concurrently(bucketName string, path string) (content []byte, err error) {
-
-	session := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(o.region),
-	}))
-
-	downloader := s3manager.NewDownloader(session)
-
-	var buffer aws.WriteAtBuffer
-
-	_, err = downloader.Download(&buffer, &s3.GetObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(path),
-	})
-
-	fmt.Println("downloading object: ", path)
-
-	if err != nil {
-		fmt.Printf("bad response: %s\n", err)
+func (o *S3Service) ReadFromS3Concurrently(bucket, path string, output io.WriterAt, options *S3Options) (err error) {
+	var downloader *s3manager.Downloader
+	if options == nil {
+		downloader = s3manager.NewDownloaderWithClient(o.service)
 	} else {
-		content = buffer.Bytes()
+		downloader = s3manager.NewDownloaderWithClient(o.service, func(d *s3manager.Downloader) {
+			d.PartSize = options.PartSize
+			d.Concurrency = options.Concurrency
+		})
 	}
+
+	_, err = downloader.Download(output, &s3.GetObjectInput{
+		Bucket: &bucket,
+		Key:    &path,
+	})
+	if err != nil {
+		log.Fatalf("Error while downloading from S3: %s", err)
+		return
+	}
+
 	return
 }
 
